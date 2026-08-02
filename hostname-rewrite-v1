@@ -1,0 +1,93 @@
+/**
+ * This file manually added to GitHub by MINA on 2nd August 2026, as a fallback.
+ * Learning - assume Cloudflare Github integration will set this up correctly?
+
+ * Welcome to Cloudflare Workers! This is your first worker.
+ *
+ * - Run "npm run dev" in your terminal to start a development server
+ * - Open a browser tab at http://localhost:8787/ to see your worker in action
+ * - Run "npm run deploy" to publish your worker
+ *
+ * Learn more at https://developers.cloudflare.com/workers/
+ */
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const incomingHost = url.hostname;
+
+    // Extract the Bizplex app prefix: saas, saashr, saascrm, etc.
+    // It is always the part before the first dot.
+    const match = incomingHost.match(/^(saas[a-z0-9\-]*)\./i);
+
+
+    if (match) {
+      const prefix = match[1];  // "saas", "saashr", "saascrm", etc.
+
+      // Rewrite to Bizplex internal domain
+      const ORIGIN_HOST = `${prefix}.bizplex.com.au`;
+      //const ORIGIN_HOST = `${prefix}.irresistibledesigns.com`;
+
+      // Preserve the original hostname so your app knows which custom domain was used
+      const originalHost = request.headers.get("host") || incomingHost;
+
+      url.hostname = ORIGIN_HOST;
+
+      // Clone the request so we can modify headers
+      const modifiedRequest = new Request(url.toString(), request);
+
+      //Ask Azure for the saas<xxx>.bizplex.com.au certificate
+      modifiedRequest.headers.set("host", ORIGIN_HOST);
+    
+      // Preserve customer-facing hostname
+      modifiedRequest.headers.set("X-Forwarded-Host", originalHost);
+      modifiedRequest.headers.set("X-Custom-Domain", originalHost);
+
+      return fetch(modifiedRequest);
+    }
+
+    // If it doesn't match the Bizplex SaaS pattern, pass through untouched
+    return fetch(request);
+  }
+};
+
+/*
+Incoming request
+
+Browser:
+
+GET https://saas.saponi.com.au/
+Host: saas.saponi.com.au
+
+Cloudflare Worker receives:
+
+incomingHost = saas.saponi.com.au
+
+It calculates:
+
+ORIGIN_HOST = "saas.bizplex.com.au";
+
+Then:
+
+url.hostname = ORIGIN_HOST;
+
+changes the destination:
+
+https://saas.bizplex.com.au/
+
+and:
+
+modifiedRequest.headers.set("Host", ORIGIN_HOST);
+
+changes the HTTP Host header:
+
+Host: saas.bizplex.com.au
+
+So Azure Container Apps receives:
+
+GET /
+Host: saas.bizplex.com.au
+
+X-Forwarded-Host: saas.saponi.com.au
+X-Custom-Domain: saas.saponi.com.au
+*/
